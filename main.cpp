@@ -2,6 +2,10 @@
 #include <string>
 #include "board.hpp"
 
+#ifdef _WIN32
+    #include <windows.h>
+#endif
+
 using namespace std;
 
 bool parsePosition(const string& pos, int& row, int& col) {
@@ -15,6 +19,10 @@ bool parsePosition(const string& pos, int& row, int& col) {
 }
 
 int main() {
+    #ifdef _WIN32
+        SetConsoleOutputCP(65001);
+    #endif
+
     Board board;
     board.initialize();
     board.printBoard();
