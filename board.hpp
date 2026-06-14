@@ -9,6 +9,12 @@ class Board {
     private:
     Piece* grid[8][8];
     pair<int, int> enPassantTarget;
+
+    static bool isInBounds(int row, int col);
+    void clear();
+    bool movePieceUnchecked(int fromRow, int fromCol, int toRow, int toCol, bool autoPromote, bool announceErrors);
+    bool attacksSquare(Piece* attacker, int fromRow, int fromCol, int toRow, int toCol) const;
+
     public:
     Board();
     Board(const Board& other);

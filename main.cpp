@@ -44,9 +44,9 @@ int main() {
         cout << "Enter move (e.g., e2 e4) or 'X' to quit: ";
         cout << (whiteTurn ? "White" : "Black") << "'s move: ";
         
-        cin >> fromSqr;
-        if (fromSqr == "X") break;
-        cin >> toSqr;
+        if (!(cin >> fromSqr)) break;
+        if (fromSqr == "X" || fromSqr == "x") break;
+        if (!(cin >> toSqr)) break;
 
         int fromRow, fromCol, toRow, toCol;
         if (!parsePosition(fromSqr, fromRow, fromCol) || 
@@ -60,19 +60,6 @@ int main() {
             cout << "Error: not your piece.\n";
             continue;
         }
-        Board tempBoard(board);  // copy current board
-
-        if (!tempBoard.movePiece(fromRow, fromCol, toRow, toCol, true)) {
-            cout << "Invalid move. Try again.\n";
-            continue;
-        }
-
-        // Check if move leaves the king in check
-        if (tempBoard.isInCheck(whiteTurn)) {
-            cout << "Illegal move: your king would be in check!\n";
-            continue; // don't allow this move
-        }
-
         if (board.movePiece(fromRow, fromCol, toRow, toCol)) {
             whiteTurn = !whiteTurn; // Switch turns only if move is valid
                 board.printBoard();

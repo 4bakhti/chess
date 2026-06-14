@@ -1,8 +1,22 @@
 #include "board.hpp"
 #include <iostream>
 #include <cmath>
+#include <cctype>
 
 using namespace std;
+
+bool Board::isInBounds(int row, int col) {
+    return row >= 0 && row < 8 && col >= 0 && col < 8;
+}
+
+void Board::clear() {
+    for (int row = 0; row < 8; row++) {
+        for (int col = 0; col < 8; col++) {
+            delete grid[row][col];
+            grid[row][col] = nullptr;
+        }
+    }
+}
 
 Board::Board(){ //constructor
     enPassantTarget={-1,-1};
@@ -14,16 +28,18 @@ Board::Board(){ //constructor
 }
 //I will use "The Rule of Three(destructor, copy constructor, copy assignment operator)"
 Board::~Board() { //destructor
-    for (int i = 0; i < 8; i++)
-        for (int j = 0; j < 8; j++)
-            delete grid[i][j];
+    clear();
 }
 
 Board::Board(const Board& other) { //for using polymorphism
     enPassantTarget = other.enPassantTarget;
+    for (int row = 0; row < 8; row++)
+        for (int col = 0; col < 8; col++)
+            grid[row][col] = nullptr;
+
     for (int row = 0; row < 8; row++) {
         for (int col = 0; col < 8; col++) {
-            if (other.grid[row][col]) grid[row][col] = other.grid[row][col]->clone(); 
+            if (other.grid[row][col]) grid[row][col] = other.grid[row][col]->clone();
             else grid[row][col] = nullptr;
         }
     }
@@ -32,9 +48,8 @@ Board::Board(const Board& other) { //for using polymorphism
 Board& Board::operator=(const Board& other) { //Assignment Operator
     if (this != &other) {
         enPassantTarget = other.enPassantTarget;
-        for (int row = 0; row < 8; row++)
-            for (int col = 0; col < 8; col++) delete grid[row][col]; // Firstly we will delete our current pieces to avoid memory leaks
-        
+        clear(); // Firstly we will delete our current pieces to avoid memory leaks
+
         for (int row = 0; row < 8; row++) {
             for (int col = 0; col < 8; col++) {
                 if (other.grid[row][col]) grid[row][col] = other.grid[row][col]->clone();
@@ -46,6 +61,9 @@ Board& Board::operator=(const Board& other) { //Assignment Operator
 }
 
 void Board::initialize() {
+    clear();
+    enPassantTarget = {-1, -1};
+
     //pawns
     for(int col=0; col<8; col++){
         grid[6][col]=new Pawn(true); //true represents white
@@ -92,14 +110,32 @@ void Board::printBoard() const {
 }
 
 Piece* Board::getPiece(int row, int col) const{
+    if (!isInBounds(row, col)) return nullptr;
     return grid[row][col];
 }
 
 void Board::setPiece(int row, int col, Piece* piece) {
+    if (!isInBounds(row, col)) return;
+    if (grid[row][col] == piece) return;
+
+    if (piece) {
+        for (int r = 0; r < 8; r++) {
+            for (int c = 0; c < 8; c++) {
+                if ((r != row || c != col) && grid[r][c] == piece) {
+                    grid[r][c] = nullptr;
+                }
+            }
+        }
+    }
+
+    delete grid[row][col];
     grid[row][col] = piece;
 }
 
 bool Board::isPathClear(int fromRow, int fromCol, int toRow, int toCol) const {
+    if (!isInBounds(fromRow, fromCol) || !isInBounds(toRow, toCol)) return false;
+    if (fromRow != toRow && fromCol != toCol && abs(fromRow - toRow) != abs(fromCol - toCol)) return false;
+
     int rowStep = (toRow - fromRow) == 0 ? 0 : (toRow - fromRow) / abs(toRow - fromRow);
     int colStep = (toCol - fromCol) == 0 ? 0 : (toCol - fromCol) / abs(toCol - fromCol);
     int r = fromRow + rowStep;
@@ -113,34 +149,56 @@ bool Board::isPathClear(int fromRow, int fromCol, int toRow, int toCol) const {
     return true;
 }
 
+bool Board::attacksSquare(Piece* attacker, int fromRow, int fromCol, int toRow, int toCol) const {
+    if (!attacker || !isInBounds(fromRow, fromCol) || !isInBounds(toRow, toCol)) return false;
+
+    int rowDiff = abs(fromRow - toRow);
+    int colDiff = abs(fromCol - toCol);
+
+    if (Pawn* pawn = dynamic_cast<Pawn*>(attacker)) {
+        int direction = pawn->isWhitePiece() ? -1 : 1;
+        return toRow == fromRow + direction && colDiff == 1;
+    }
+
+    if (dynamic_cast<Knight*>(attacker)) {
+        return (rowDiff == 1 && colDiff == 2) || (rowDiff == 2 && colDiff == 1);
+    }
+
+    if (dynamic_cast<King*>(attacker)) {
+        return rowDiff <= 1 && colDiff <= 1 && (rowDiff != 0 || colDiff != 0);
+    }
+
+    if (attacker->isMoveValid(fromRow, fromCol, toRow, toCol)) {
+        return isPathClear(fromRow, fromCol, toRow, toCol);
+    }
+
+    return false;
+}
+
 bool Board::isSquareAttacked(int row, int col, bool byWhite) const {
+    if (!isInBounds(row, col)) return false;
+
     for (int r = 0; r < 8; ++r) {
         for (int c = 0; c < 8; ++c) {
             Piece* attacker = getPiece(r, c);
             if (!attacker || attacker->isWhitePiece() != byWhite) continue;
 
-            if (attacker->isMoveValid(r, c, row, col)) {
-                if (dynamic_cast<Knight*>(attacker) || isPathClear(r, c, row, col)) { // If it's a Knight, it jumps. If not, path must be clear.
-                    return true;
-                }
-            }
+            if (attacksSquare(attacker, r, c, row, col)) return true;
         }
     }
     return false;
 }
 
 bool Board::isInCheck(bool white) const {
-    int kingRow = -1, kingCol = -1;
     for (int row = 0; row < 8; row++) { // to find a king
         for (int col = 0; col < 8; col++) {
             Piece* piece = getPiece(row, col);
             if (piece && dynamic_cast<King*>(piece) && piece->isWhitePiece() == white) {
-                kingRow = row; kingCol = col;
-                break;
+                return isSquareAttacked(row, col, !white); // Is the King under attack?
             }
         }
     }
-    return isSquareAttacked(kingRow, kingCol, !white); // Is the King under attack?
+    return true; // A missing king is an invalid and unsafe board state.
 }
 
 bool Board::isCheckmate(bool white) const {
@@ -155,7 +213,7 @@ bool Board::isCheckmate(bool white) const {
                     
                     Board tempBoard(*this); 
 
-                    if (tempBoard.movePiece(fromRow, fromCol, toRow, toCol, true) && 
+                    if (tempBoard.movePieceUnchecked(fromRow, fromCol, toRow, toCol, true, false) &&
                         !tempBoard.isInCheck(white)) {
                         return false; // found an escape->not checkmate
                     }
@@ -178,6 +236,7 @@ bool Board::canCastleKingSide(bool white) const {
 
     if (!king || !rook) return false;
     if (!dynamic_cast<King*>(king) || !dynamic_cast<Rook*>(rook)) return false;
+    if (king->isWhitePiece() != white || rook->isWhitePiece() != white) return false;
 
     if (king->hasMovedBefore() || rook->hasMovedBefore()) return false;
     //squares between king and rook should be empty and not attacked
@@ -195,6 +254,7 @@ bool Board::canCastleQueenSide(bool white) const {
 
     if (!king || !rook) return false;
     if (!dynamic_cast<King*>(king) || !dynamic_cast<Rook*>(rook)) return false;
+    if (king->isWhitePiece() != white || rook->isWhitePiece() != white) return false;
 
     if (king->hasMovedBefore() || rook->hasMovedBefore()) return false;
     if (getPiece(row, 1) || getPiece(row, 2) || getPiece(row, 3)) return false;
@@ -204,20 +264,61 @@ bool Board::canCastleQueenSide(bool white) const {
     return true;
 }
 
-bool Board::movePiece(int fromRow, int fromCol, int toRow, int toCol,bool autoPromote) {
+bool Board::movePiece(int fromRow, int fromCol, int toRow, int toCol, bool autoPromote) {
+    if (!isInBounds(fromRow, fromCol) || !isInBounds(toRow, toCol)) {
+        cout << "Invalid board position.\n";
+        return false;
+    }
+
     Piece* piece = getPiece(fromRow, fromCol);
     if (!piece) {
         cout << "No piece at starting position\n";
         return false;
     }
 
-    if (!piece->isMoveValid(fromRow, fromCol, toRow, toCol)) {
+    Piece* target = getPiece(toRow, toCol);
+    if (target && dynamic_cast<King*>(target)) {
+        cout << "Invalid move: kings cannot be captured.\n";
+        return false;
+    }
+
+    Board tempBoard(*this);
+    if (!tempBoard.movePieceUnchecked(fromRow, fromCol, toRow, toCol, true, false)) {
         cout << "Invalid move for that piece.\n";
+        return false;
+    }
+
+    if (tempBoard.isInCheck(piece->isWhitePiece())) {
+        cout << "Illegal move: your king would be in check!\n";
+        return false;
+    }
+
+    return movePieceUnchecked(fromRow, fromCol, toRow, toCol, autoPromote, true);
+}
+
+bool Board::movePieceUnchecked(int fromRow, int fromCol, int toRow, int toCol, bool autoPromote, bool announceErrors) {
+    if (!isInBounds(fromRow, fromCol) || !isInBounds(toRow, toCol)) {
+        if (announceErrors) cout << "Invalid board position.\n";
+        return false;
+    }
+
+    Piece* piece = getPiece(fromRow, fromCol);
+    if (!piece) {
+        if (announceErrors) cout << "No piece at starting position\n";
+        return false;
+    }
+
+    if (!piece->isMoveValid(fromRow, fromCol, toRow, toCol)) {
+        if (announceErrors) cout << "Invalid move for that piece.\n";
         return false;
     }
 
     Piece* target = getPiece(toRow, toCol);
     if (target && target->isWhitePiece() == piece->isWhitePiece()) {
+        return false;
+    }
+    if (target && dynamic_cast<King*>(target)) {
+        if (announceErrors) cout << "Invalid move: kings cannot be captured.\n";
         return false;
     }
 
@@ -240,6 +341,12 @@ bool Board::movePiece(int fromRow, int fromCol, int toRow, int toCol,bool autoPr
             // En passant; logic: If square is empty (no target) BUT it matches enPassantTarget
             if (!target && toRow == enPassantTarget.first && toCol == enPassantTarget.second) {
                 int capturedRow = pawn->isWhitePiece() ? toRow + 1 : toRow - 1;
+                if (!isInBounds(capturedRow, toCol)) return false;
+                Piece* capturedPawn = grid[capturedRow][toCol];
+                if (!capturedPawn || capturedPawn->isWhitePiece() == pawn->isWhitePiece() ||
+                    !dynamic_cast<Pawn*>(capturedPawn)) {
+                    return false;
+                }
                 delete grid[capturedRow][toCol]; // Delete the pawn behind us
                 grid[capturedRow][toCol] = nullptr;
                 enPassantTarget = {-1, -1};
@@ -267,6 +374,8 @@ bool Board::movePiece(int fromRow, int fromCol, int toRow, int toCol,bool autoPr
         int colDiff = toCol - fromCol;
         // King-side castling
         if (colDiff == 2) {
+            int homeRow = piece->isWhitePiece() ? 7 : 0;
+            if (fromRow != homeRow || toRow != homeRow || fromCol != 4 || toCol != 6) return false;
             if (canCastleKingSide(piece->isWhitePiece())) {
                 setPiece(toRow, toCol, piece);
                 setPiece(fromRow, fromCol, nullptr);
@@ -284,6 +393,8 @@ bool Board::movePiece(int fromRow, int fromCol, int toRow, int toCol,bool autoPr
         }
         // Queen-side castling
         else if (colDiff == -2) {
+            int homeRow = piece->isWhitePiece() ? 7 : 0;
+            if (fromRow != homeRow || toRow != homeRow || fromCol != 4 || toCol != 2) return false;
             if (canCastleQueenSide(piece->isWhitePiece())) {
                 setPiece(toRow, toCol, piece);
                 setPiece(fromRow, fromCol, nullptr);
@@ -315,8 +426,8 @@ bool Board::movePiece(int fromRow, int fromCol, int toRow, int toCol,bool autoPr
             else{
                 cout << "Promote to (Q, R, B, N): ";
                 char choice;
-                cin >> choice;
-                switch(toupper(choice)) {
+                if (!(cin >> choice)) choice = 'Q';
+                switch(toupper(static_cast<unsigned char>(choice))) {
                     case 'R': newPiece = new Rook(white); break;
                     case 'B': newPiece = new Bishop(white); break;
                     case 'N': newPiece = new Knight(white); break;
