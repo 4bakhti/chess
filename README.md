@@ -8,6 +8,7 @@ A functional Chess game implementation written in C++. This project focuses on t
 * **Local Multiplayer:** Currently supports two-player (Human vs. Human) gameplay.
 * **Console Output:** Visualizes the board via the command line/terminal.
 * **Windows GUI:** Includes a clickable desktop board for local two-player games.
+* **Move History:** Shows played moves in the GUI, including captures, castling, promotion, check, and checkmate markers.
 
 ## 🔮 Roadmap & Future Plans
 This project is currently under active development. The following features are planned for future releases:
